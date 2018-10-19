@@ -61,19 +61,19 @@ public class ExtractQuery implements Iterator<Query> {
         if (this.reader == null) return q;
         q.SetTopicId(populateTopicId());
         String originalContent = processOneTopic();
-        q.SetQueryContent(normalizeString(originalContent));
+        q.SetQueryContent(irPreProcess(originalContent));
         return q;
     }
 
     /**
      * 1) tokenized, 2) to lowercase, 3) remove stop words, 4) stemming
      */
-    private String normalizeString(String original) {
+    private String irPreProcess(String original) {
         String wekaDelimiters = "\r\n\t.,;:\"()?! ";
         StringTokenizer st = new StringTokenizer(original, wekaDelimiters);
         StringBuilder sb = new StringBuilder();
         while (st.hasMoreTokens()) {
-            String lcnss = lcNoStopStem(st.nextToken());
+            String lcnss = normalizeString(st.nextToken());
             if (lcnss.isEmpty()) continue;
             sb.append(lcnss);
             sb.append(' ');
@@ -81,7 +81,7 @@ public class ExtractQuery implements Iterator<Query> {
         return sb.toString();
     }
 
-    private String lcNoStopStem(String token) {
+    private String normalizeString(String token) {
         token = token.toLowerCase(Locale.US);
         if (this.stopWords.contains(token)) return "";
         char[] tokenLc = token.toCharArray();
@@ -115,7 +115,7 @@ public class ExtractQuery implements Iterator<Query> {
     private boolean moveToTopStart() throws IOException {
         String data;
         while ((data = this.reader.readLine()) != null) {
-            if (data.trim().startsWith("<top>")) return true;
+            if (data.trim().toLowerCase(Locale.US).startsWith("<top>")) return true;
         }
         return false;
     }
@@ -126,21 +126,21 @@ public class ExtractQuery implements Iterator<Query> {
     private String processOneTopic() {
         StringBuilder sb = new StringBuilder();
         // Main logic for reading
-        String line;
         try {
-            // Read all the way to end
-            while (!((line = this.reader.readLine()).startsWith("</top>"))) {
-                String processed = line.trim();
+            String line;
+            // Read all the way to end of this document
+            while (!((line = this.reader.readLine().trim()).startsWith("</top>"))) {
+                String lcLine = line.toLowerCase(Locale.US);
+                if (lcLine.isEmpty()) continue;
                 sb.append(' ');
-                if (processed.startsWith("<title>")) {
+                if (lcLine.startsWith("<title>")) {
                     // Parse title
-                    processed = processed.substring(8);
-                } else if (processed.startsWith("<desc>")) {
-                    continue;
-                } else if (processed.startsWith("<narr>")) {
+                    line = line.substring(8);
+                } else if (lcLine.startsWith("<desc>")
+                        || lcLine.startsWith("<narr>")) {
                     continue;
                 }
-                sb.append(processed);
+                sb.append(line);
             }
         } catch (IOException e) {
             e.printStackTrace();
