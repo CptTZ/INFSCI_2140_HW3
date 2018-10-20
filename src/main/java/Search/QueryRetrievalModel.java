@@ -85,7 +85,6 @@ public class QueryRetrievalModel {
             // Non-exist, no need to calc posting list
             if (cFreq.equals(0L)) continue;
             int[][] postingList = getCollectionPostings(token);
-            long totalFreq = 0;
             for (int[] postingForOneDoc : postingList) {
                 int docid = postingForOneDoc[0], docFreq = postingForOneDoc[1];
                 HashMap<String, Integer> oneTermFreq = tokenOnCollection.getOrDefault(docid, new HashMap<>());
@@ -94,7 +93,6 @@ public class QueryRetrievalModel {
                 }
                 oneTermFreq.put(token, docFreq);
             }
-            assert totalFreq == cFreq;
         }
         return tokenOnCollection;
     }
@@ -127,10 +125,10 @@ public class QueryRetrievalModel {
      */
     private Long getCollectionFreq(String token) throws IOException {
         if (!this.collectionFreq.containsKey(token)) {
-            //TODO: Use myFreq is enough
             Long termFreq = this.indexReader.CollectionFreq(token);
             Long myFreq = calcCollectionFreq(getCollectionPostings(token));
-            assert myFreq.equals(termFreq);
+            if (!myFreq.equals(termFreq))
+                System.err.println("Collection frequency disagree.");
             this.collectionFreq.put(token, termFreq);
         }
         return this.collectionFreq.get(token);
@@ -154,7 +152,7 @@ public class QueryRetrievalModel {
     /**
      * Dirichlet smoothing (Reference: org.apache.lucene.search.similarities.LMDirichletSimilarity)
      */
-    private double getScore(String[] tokens, HashMap<String, Integer> docTermFreqList, int doclen) {
+    private double getScore(String[] tokens, HashMap<String, Integer> docTermFreqList, int doclen) throws IOException {
         double score = 1.0;
         double adjLen = (doclen + this.mu);
         double // (|D|/(|D|+MU)) as l1 and (MU/(|D|+MU)) as r1
@@ -165,8 +163,10 @@ public class QueryRetrievalModel {
             // Non-exist, no need to calc rest
             if (cf.equals(0L)) continue;
             int tf = docTermFreqList.getOrDefault(token, 0);
+            int tf1 = this.indexReader.DocFreq(token);
+            //System.err.println(String.format("Doc freq: %d,%d", tf, tf1));
             double // p(w|D) = l1*(c(w,D)/|D|) + r1*p(w|REF)
-                    l2 = 1.0 * tf / doclen,
+                    l2 = 1.0 * tf1 / doclen,
                     r2 = 1.0 * cf / this.indexCorpusSize;
             score *= (l1 * l2 + r1 * r2);
         }
