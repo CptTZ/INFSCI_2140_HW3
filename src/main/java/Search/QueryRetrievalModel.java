@@ -68,13 +68,14 @@ public class QueryRetrievalModel {
             if (!this.collectionFreq.containsKey(token)) {
                 // This step costs time, so have to cache it in a HashMap first
                 Long cf = this.indexReader.CollectionFreq(token);
+                // Show a warning about detecting non-exist term token
+                if (cf.equals(0L))
+                    System.err.println(String.format("Token <%s> not in collection", token));
                 this.collectionFreq.put(token, cf);
             }
             Long cFreq = this.collectionFreq.get(token);
-            if (cFreq.equals(0L)) {
-                System.err.println(String.format("Token <%s> not in collection", token));
-                continue;
-            }
+            // Non-exist, no need to calc posting list
+            if (cFreq.equals(0L)) continue;
             int[][] postingList = this.indexReader.getPostingList(token);
             for (int[] postingForOneDoc : postingList) {
                 int docid = postingForOneDoc[0], docFreq = postingForOneDoc[1];
