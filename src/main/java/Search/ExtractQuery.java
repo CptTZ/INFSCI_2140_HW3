@@ -19,6 +19,7 @@ import java.util.stream.Stream;
 public class ExtractQuery implements Iterator<Query> {
 
     private Pattern matchNumberRegex = Pattern.compile("[0-9]+");
+    private boolean readyForNextQuery;
     private BufferedReader reader;
     private HashSet<String> stopWords = new HashSet<>();
     // Adjust as needed, title only is much faster
@@ -53,26 +54,30 @@ public class ExtractQuery implements Iterator<Query> {
 
     @Override
     public boolean hasNext() {
-        if (this.reader == null) return false;
-        boolean res;
-        try {
-            res = moveToTopStart();
-        } catch (Exception e) {
-            e.printStackTrace();
-            res = false;
+        if (this.reader == null) {
+            this.readyForNextQuery = false;
+        } else {
+            try {
+                this.readyForNextQuery = moveToTopStart();
+                // File end, close reader
+                if (!this.readyForNextQuery)
+                    this.closeHandler();
+            } catch (Exception e) {
+                e.printStackTrace();
+                this.readyForNextQuery = false;
+            }
         }
-        // File end, close reader
-        if (!res) this.closeHandler();
-        return res;
+        return this.readyForNextQuery;
     }
 
     @Override
     public Query next() {
         Query q = new Query();
-        if (this.reader == null) return q;
+        if (!this.readyForNextQuery) return q;
         q.SetTopicId(populateTopicId());
         String originalContent = processOneTopic(this.isTitleOnly);
         q.SetQueryContent(irPreProcess(originalContent));
+        this.readyForNextQuery = false;
         return q;
     }
 
@@ -115,7 +120,7 @@ public class ExtractQuery implements Iterator<Query> {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return "";
+        return "UNKNOWN";
     }
 
     /**
@@ -126,7 +131,8 @@ public class ExtractQuery implements Iterator<Query> {
     private boolean moveToTopStart() throws IOException {
         String data;
         while ((data = this.reader.readLine()) != null) {
-            if (data.trim().toLowerCase(Locale.US).startsWith("<top>")) return true;
+            if (data.trim().toLowerCase(Locale.US).startsWith("<top>"))
+                return true;
         }
         return false;
     }
