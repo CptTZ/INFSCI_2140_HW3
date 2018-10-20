@@ -141,10 +141,9 @@ public class QueryRetrievalModel {
             throws IOException {
         ArrayList<Document> allResults = new ArrayList<>(queryResult.size());
         for (Integer docid : queryResult.keySet()) {
-            HashMap<String, Integer> docTermFreqList = queryResult.get(docid);
-            int doclen = indexReader.docLength(docid);
-            double score = getScore(tokens, docTermFreqList, doclen);
-            allResults.add(new Document(docid.toString(), this.indexReader.getDocno(docid), score));
+            double score = getScore(tokens, queryResult.get(docid), this.indexReader.docLength(docid));
+            Document d = new Document(docid.toString(), this.indexReader.getDocno(docid), score);
+            allResults.add(d);
         }
         return allResults;
     }
@@ -168,6 +167,7 @@ public class QueryRetrievalModel {
             double // p(w|D) = l1*(c(w,D)/|D|) + r1*p(w|REF)
                     l2 = 1.0 * tf1 / doclen,
                     r2 = 1.0 * cf / this.indexCorpusSize;
+            // Unigram LM
             score *= (l1 * l2 + r1 * r2);
         }
         score = score > 0 ? score : 0;
