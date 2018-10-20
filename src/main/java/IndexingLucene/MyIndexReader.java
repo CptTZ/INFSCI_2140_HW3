@@ -36,6 +36,10 @@ public class MyIndexReader {
 		ireader = DirectoryReader.open(directory);
 		isearcher = new IndexSearcher(ireader);
 	}
+
+	public int getTotalNumofCorpus() {
+		return this.ireader.numDocs();
+	}
 	
 	/**
 	 * Get the (non-negative) integer docid for the requested docno.

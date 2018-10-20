@@ -11,12 +11,14 @@ import java.util.List;
 
 public class QueryRetrievalModel {
 
-    private MyIndexReader indexReader;
+    private final MyIndexReader indexReader;
+    private final int indexCorpusSize;
     private double mu = 2000;
-    HashMap<String, Long> collectionFreq = new HashMap<>();
+    private HashMap<String, Long> collectionFreq = new HashMap<>();
 
     public QueryRetrievalModel(MyIndexReader ixreader) {
         indexReader = ixreader;
+        this.indexCorpusSize = ixreader.getTotalNumofCorpus();
     }
 
     public double getMu() {
@@ -42,22 +44,34 @@ public class QueryRetrievalModel {
         String[] queryTokens = aQuery.GetQueryContent().split(" ");
         if (queryTokens.length == 0) return new ArrayList<>(0);
 
-        return internalQueryOne(queryTokens, TopN);
+        return internalQueryDocument(queryTokens, TopN);
     }
 
     /**
      * Internal method for querying one tokenized document
      */
-    private List<Document> internalQueryOne(String[] tokens, int topN) throws IOException {
+    private List<Document> internalQueryDocument(String[] tokens, int topN) throws IOException {
         HashMap<Integer, HashMap<String, Integer>> queryResult = populateQueryResult(tokens);
-        List<Document> res = queryLikelihood(queryResult);
+        ArrayList<Document> allResults = queryLikelihood(queryResult, tokens);
 
-        res.sort((doc1, doc2) -> {
-            // d1 <= d2, DESC
+        // Order result by score
+        allResults.sort((doc1, doc2) -> {
+            // DESC ordering -> (d1 <= d2)
             double d1s = doc1.score(), d2s = doc2.score();
             return d1s > d2s ? -1 : 1;
         });
 
+        // Pick top N results
+        int finalSize = Math.min(topN, allResults.size());
+        ArrayList<Document> res = new ArrayList<>(finalSize);
+        int countDoc = 0;
+        for (Document doc : allResults) {
+            res.add(doc);
+            if (++countDoc > finalSize - 1) break;
+        }
+        // Save memory
+        queryResult.clear();
+        allResults.clear();
         return res;
     }
 
@@ -89,10 +103,35 @@ public class QueryRetrievalModel {
         return res;
     }
 
-    private List<Document> queryLikelihood(HashMap<Integer, HashMap<String, Integer>> queryResult) throws IOException {
-        ArrayList<Document> res = new ArrayList<>();
-
-        return res;
+    /**
+     * Use LM method for calc the query result score
+     */
+    private ArrayList<Document> queryLikelihood(HashMap<Integer, HashMap<String, Integer>> queryResult, String[] tokens)
+            throws IOException {
+        ArrayList<Document> allResults = new ArrayList<>(queryResult.size());
+        for (Integer docid : queryResult.keySet()) {
+            HashMap<String, Integer> docTermFreqList = queryResult.get(docid);
+            double score = 1.0;
+            int doclen = indexReader.docLength(docid);
+            // Dirichlet smoothing (Reference: org.apache.lucene.search.similarities.LMDirichletSimilarity)
+            double adjLen = (doclen + this.mu);
+            double // (|D|/(|D|+MU)) as l1 and (MU/(|D|+MU)) as r1
+                    l1 = 1.0 * doclen / adjLen,
+                    r1 = 1.0 * this.mu / adjLen;
+            for (String token : tokens) {
+                Long cf = this.collectionFreq.get(token);
+                // Non-exist, no need to calc rest
+                if (cf.equals(0L)) continue;
+                int tf = docTermFreqList.getOrDefault(token, 0);
+                double // p(w|D) = l1*(c(w,D)/|D|) + r1*p(w|REF)
+                        l2 = 1.0 * tf / doclen,
+                        r2 = 1.0 * cf / this.indexCorpusSize;
+                score *= (l1 * l2 + r1 * r2);
+            }
+            score = score > 0 ? score : 0;
+            allResults.add(new Document(docid.toString(), this.indexReader.getDocno(docid), score));
+        }
+        return allResults;
     }
 
 }
