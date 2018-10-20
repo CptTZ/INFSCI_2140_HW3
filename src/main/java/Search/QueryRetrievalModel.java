@@ -15,6 +15,7 @@ public class QueryRetrievalModel {
     private final int indexCorpusSize;
     private double mu = 2000;
     private HashMap<String, Long> collectionFreq = new HashMap<>();
+    private HashMap<String, int[][]> collectionPostings = new HashMap<>();
 
     public QueryRetrievalModel(MyIndexReader ixreader) {
         indexReader = ixreader;
@@ -44,19 +45,19 @@ public class QueryRetrievalModel {
         String[] queryTokens = aQuery.GetQueryContent().split(" ");
         if (queryTokens.length == 0) return new ArrayList<>(0);
 
-        return internalQueryDocument(queryTokens, TopN);
+        return internalQueryDocumentRanked(queryTokens, TopN);
     }
 
     /**
-     * Internal method for querying one tokenized document
+     * Internal method for querying one tokenized document, rank the result based on scores
      */
-    private List<Document> internalQueryDocument(String[] tokens, int topN) throws IOException {
+    private List<Document> internalQueryDocumentRanked(String[] tokens, int topN) throws IOException {
         HashMap<Integer, HashMap<String, Integer>> queryResult = populateQueryResult(tokens);
         ArrayList<Document> allResults = queryLikelihood(queryResult, tokens);
 
-        // Order result by score
+        // Order by score DESC
         allResults.sort((doc1, doc2) -> {
-            // DESC ordering -> (d1 <= d2)
+            // (d1 <= d2)
             double d1s = doc1.score(), d2s = doc2.score();
             return d1s > d2s ? -1 : 1;
         });
@@ -70,6 +71,7 @@ public class QueryRetrievalModel {
             if (++countDoc > finalSize - 1) break;
         }
         // Save memory
+        queryResult.forEach((id, tmp) -> tmp.clear());
         queryResult.clear();
         allResults.clear();
         return res;
@@ -77,30 +79,61 @@ public class QueryRetrievalModel {
 
     private HashMap<Integer, HashMap<String, Integer>> populateQueryResult(String[] tokens) throws IOException {
         // <DOCID, <TERM, FREQ>>
-        HashMap<Integer, HashMap<String, Integer>> res = new HashMap<>();
+        HashMap<Integer, HashMap<String, Integer>> tokenOnCollection = new HashMap<>();
         for (String token : tokens) {
-            if (!this.collectionFreq.containsKey(token)) {
-                // This step costs time, so have to cache it in a HashMap first
-                Long cf = this.indexReader.CollectionFreq(token);
-                // Show a warning about detecting non-exist term token
-                if (cf.equals(0L))
-                    System.err.println(String.format("[WARN] Token <%s> not in collection", token));
-                this.collectionFreq.put(token, cf);
-            }
-            Long cFreq = this.collectionFreq.get(token);
+            Long cFreq = getCollectionFreq(token);
             // Non-exist, no need to calc posting list
             if (cFreq.equals(0L)) continue;
-            int[][] postingList = this.indexReader.getPostingList(token);
+            int[][] postingList = getCollectionPostings(token);
+            long totalFreq = 0;
             for (int[] postingForOneDoc : postingList) {
                 int docid = postingForOneDoc[0], docFreq = postingForOneDoc[1];
-                HashMap<String, Integer> oneTermFreq = res.getOrDefault(docid, new HashMap<>());
+                HashMap<String, Integer> oneTermFreq = tokenOnCollection.getOrDefault(docid, new HashMap<>());
                 if (oneTermFreq.size() == 0) {
-                    res.putIfAbsent(docid, oneTermFreq);
+                    tokenOnCollection.putIfAbsent(docid, oneTermFreq);
                 }
                 oneTermFreq.put(token, docFreq);
             }
+            assert totalFreq == cFreq;
         }
-        return res;
+        return tokenOnCollection;
+    }
+
+    /**
+     * Cache collection posting list and get the cached result
+     */
+    private int[][] getCollectionPostings(String token) throws IOException {
+        if (!this.collectionPostings.containsKey(token)) {
+            int[][] postingList = this.indexReader.getPostingList(token);
+            if (postingList == null) postingList = new int[0][];
+            // Show a warning about detecting non-exist term token
+            if (postingList.length == 0)
+                System.err.println(String.format("[WARN] Token <%s> not in collection", token));
+            this.collectionPostings.put(token, postingList);
+        }
+        return this.collectionPostings.get(token);
+    }
+
+    private Long calcCollectionFreq(int[][] postings) {
+        long count = 0;
+        for (int[] one : postings) {
+            count += one[1];
+        }
+        return count;
+    }
+
+    /**
+     * Get term freq in the given collection of given token
+     */
+    private Long getCollectionFreq(String token) throws IOException {
+        if (!this.collectionFreq.containsKey(token)) {
+            //TODO: Use myFreq is enough
+            Long termFreq = this.indexReader.CollectionFreq(token);
+            Long myFreq = calcCollectionFreq(getCollectionPostings(token));
+            assert myFreq.equals(termFreq);
+            this.collectionFreq.put(token, termFreq);
+        }
+        return this.collectionFreq.get(token);
     }
 
     /**
@@ -111,27 +144,34 @@ public class QueryRetrievalModel {
         ArrayList<Document> allResults = new ArrayList<>(queryResult.size());
         for (Integer docid : queryResult.keySet()) {
             HashMap<String, Integer> docTermFreqList = queryResult.get(docid);
-            double score = 1.0;
             int doclen = indexReader.docLength(docid);
-            // Dirichlet smoothing (Reference: org.apache.lucene.search.similarities.LMDirichletSimilarity)
-            double adjLen = (doclen + this.mu);
-            double // (|D|/(|D|+MU)) as l1 and (MU/(|D|+MU)) as r1
-                    l1 = 1.0 * doclen / adjLen,
-                    r1 = 1.0 * this.mu / adjLen;
-            for (String token : tokens) {
-                Long cf = this.collectionFreq.get(token);
-                // Non-exist, no need to calc rest
-                if (cf.equals(0L)) continue;
-                int tf = docTermFreqList.getOrDefault(token, 0);
-                double // p(w|D) = l1*(c(w,D)/|D|) + r1*p(w|REF)
-                        l2 = 1.0 * tf / doclen,
-                        r2 = 1.0 * cf / this.indexCorpusSize;
-                score *= (l1 * l2 + r1 * r2);
-            }
-            score = score > 0 ? score : 0;
+            double score = getScore(tokens, docTermFreqList, doclen);
             allResults.add(new Document(docid.toString(), this.indexReader.getDocno(docid), score));
         }
         return allResults;
+    }
+
+    /**
+     * Dirichlet smoothing (Reference: org.apache.lucene.search.similarities.LMDirichletSimilarity)
+     */
+    private double getScore(String[] tokens, HashMap<String, Integer> docTermFreqList, int doclen) {
+        double score = 1.0;
+        double adjLen = (doclen + this.mu);
+        double // (|D|/(|D|+MU)) as l1 and (MU/(|D|+MU)) as r1
+                l1 = 1.0 * doclen / adjLen,
+                r1 = 1.0 * this.mu / adjLen;
+        for (String token : tokens) {
+            Long cf = this.collectionFreq.get(token);
+            // Non-exist, no need to calc rest
+            if (cf.equals(0L)) continue;
+            int tf = docTermFreqList.getOrDefault(token, 0);
+            double // p(w|D) = l1*(c(w,D)/|D|) + r1*p(w|REF)
+                    l2 = 1.0 * tf / doclen,
+                    r2 = 1.0 * cf / this.indexCorpusSize;
+            score *= (l1 * l2 + r1 * r2);
+        }
+        score = score > 0 ? score : 0;
+        return score;
     }
 
 }
