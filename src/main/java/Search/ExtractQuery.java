@@ -21,6 +21,8 @@ public class ExtractQuery implements Iterator<Query> {
     private Pattern matchNumberRegex = Pattern.compile("[0-9]+");
     private BufferedReader reader;
     private HashSet<String> stopWords = new HashSet<>();
+    // Adjust as needed, title only is much faster
+    private boolean isTitleOnly;
 
     /**
      * you should extract the 4 queries from the Path.TopicDir
@@ -30,6 +32,7 @@ public class ExtractQuery implements Iterator<Query> {
     public ExtractQuery() {
         try {
             this.reader = Files.newBufferedReader(Paths.get(Path.TopicDir));
+            this.isTitleOnly = true;
             // Init stop words set
             try (Stream<String> lines = Files.lines(Paths.get(Path.StopwordDir))) {
                 lines.forEach(s -> this.stopWords.add(s.trim().toLowerCase(Locale.US)));
@@ -38,6 +41,14 @@ public class ExtractQuery implements Iterator<Query> {
             e.printStackTrace();
             this.reader = null;
         }
+    }
+
+    public boolean isTitleOnly() {
+        return isTitleOnly;
+    }
+
+    public void setTitleOnly(boolean titleOnly) {
+        isTitleOnly = titleOnly;
     }
 
     @Override
@@ -60,7 +71,7 @@ public class ExtractQuery implements Iterator<Query> {
         Query q = new Query();
         if (this.reader == null) return q;
         q.SetTopicId(populateTopicId());
-        String originalContent = processOneTopic();
+        String originalContent = processOneTopic(this.isTitleOnly);
         q.SetQueryContent(irPreProcess(originalContent));
         return q;
     }
@@ -123,19 +134,26 @@ public class ExtractQuery implements Iterator<Query> {
     /**
      * Line now at end of <num>, populate the whole query
      */
-    private String processOneTopic() {
+    private String processOneTopic(boolean titleOnly) {
         StringBuilder sb = new StringBuilder();
+        boolean hasTitleSaved = false;
         // Main logic for reading
         try {
             String line;
             // Read all the way to end of this document
             while (!((line = this.reader.readLine().trim()).startsWith("</top>"))) {
-                String lcLine = line.toLowerCase(Locale.US);
-                if (lcLine.isEmpty()) continue;
+                // No need to process this line with these conditions
+                if ((titleOnly && hasTitleSaved) || line.isEmpty()) continue;
+                String lcLine = line.toLowerCase(Locale.US).trim();
                 sb.append(' ');
                 if (lcLine.startsWith("<title>")) {
                     // Parse title
                     line = line.substring(8);
+                    if (titleOnly) {
+                        sb.append(line);
+                        hasTitleSaved = true;
+                        continue;
+                    }
                 } else if (lcLine.startsWith("<desc>")
                         || lcLine.startsWith("<narr>")) {
                     continue;

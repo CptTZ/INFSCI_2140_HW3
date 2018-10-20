@@ -84,7 +84,7 @@ public class QueryRetrievalModel {
                 Long cf = this.indexReader.CollectionFreq(token);
                 // Show a warning about detecting non-exist term token
                 if (cf.equals(0L))
-                    System.err.println(String.format("Token <%s> not in collection", token));
+                    System.err.println(String.format("[WARN] Token <%s> not in collection", token));
                 this.collectionFreq.put(token, cf);
             }
             Long cFreq = this.collectionFreq.get(token);
