@@ -1,14 +1,16 @@
-import java.util.List;
+import Classes.Document;
+import Classes.Query;
+import IndexingLucene.MyIndexReader;
+import Search.ExtractQuery;
+import Search.QueryRetrievalModel;
 
-import Classes.*;
-import IndexingLucene.*;
-import Search.*;
+import java.util.List;
 
 /**
  * !!! YOU CANNOT CHANGE ANYTHING IN THIS CLASS !!!
- * 
+ *
  * Main class for running your HW3.
- * 
+ *
  */
 public class HW3Main {
 
@@ -16,10 +18,12 @@ public class HW3Main {
 		// Initialization.
 		MyIndexReader ixreader = new MyIndexReader("trectext");
 		QueryRetrievalModel model = new QueryRetrievalModel(ixreader);
-		
+		if (args.length == 1) model.setMu(Double.parseDouble(args[0]));
+		System.err.println("MU used is: " + model.getMu());
+
 		// Extract the queries.
 		ExtractQuery queries = new ExtractQuery();
-		
+
 		long startTime = System.currentTimeMillis();
 		while (queries.hasNext()) {
 			Query aQuery = queries.next();
