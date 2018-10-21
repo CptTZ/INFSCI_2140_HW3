@@ -151,7 +151,7 @@ public class QueryRetrievalModel {
     /**
      * Dirichlet smoothing (Reference: org.apache.lucene.search.similarities.LMDirichletSimilarity)
      */
-    private double getScore(String[] tokens, HashMap<String, Integer> docTermFreqList, int doclen) throws IOException {
+    private double getScore(String[] tokens, HashMap<String, Integer> docTermFreqList, int doclen) {
         double score = 1.0;
         double adjLen = (doclen + this.mu);
         double // (|D|/(|D|+MU)) as l1 and (MU/(|D|+MU)) as r1
@@ -162,10 +162,9 @@ public class QueryRetrievalModel {
             // Non-exist, no need to calc rest
             if (cf.equals(0L)) continue;
             int tf = docTermFreqList.getOrDefault(token, 0);
-            int tf1 = this.indexReader.DocFreq(token);
             //System.err.println(String.format("Doc freq: %d,%d", tf, tf1));
             double // p(w|D) = l1*(c(w,D)/|D|) + r1*p(w|REF)
-                    l2 = 1.0 * tf1 / doclen,
+                    l2 = 1.0 * tf / doclen,
                     r2 = 1.0 * cf / this.indexCorpusSize;
             // Unigram LM
             score *= (l1 * l2 + r1 * r2);
