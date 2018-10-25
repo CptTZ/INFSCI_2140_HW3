@@ -12,14 +12,14 @@ import java.util.List;
 public class QueryRetrievalModel {
 
     private final MyIndexReader indexReader;
-    private final int indexCorpusSize;
+    private final long collectionTotalLength;
     private double mu = 2000;
     private HashMap<String, Long> collectionFreq = new HashMap<>();
     private HashMap<String, int[][]> collectionPostings = new HashMap<>();
 
     public QueryRetrievalModel(MyIndexReader ixreader) {
         indexReader = ixreader;
-        this.indexCorpusSize = ixreader.getTotalNumofCorpus();
+        this.collectionTotalLength = ixreader.getTotalContentLength();
     }
 
     public double getMu() {
@@ -165,7 +165,7 @@ public class QueryRetrievalModel {
             //System.err.println(String.format("Doc freq: %d,%d", tf, tf1));
             double // p(w|D) = l1*(c(w,D)/|D|) + r1*p(w|REF)
                     l2 = 1.0 * tf / doclen,
-                    r2 = 1.0 * cf / this.indexCorpusSize;
+                    r2 = 1.0 * cf / this.collectionTotalLength;
             // Unigram LM
             score *= (l1 * l2 + r1 * r2);
         }
