@@ -37,8 +37,13 @@ public class MyIndexReader {
 		isearcher = new IndexSearcher(ireader);
 	}
 
-	public int getTotalNumofCorpus() {
-		return this.ireader.numDocs();
+	public long getTotalContentLength() {
+		try {
+			return this.ireader.getSumTotalTermFreq("CONTENT");
+		} catch (IOException e) {
+			e.printStackTrace();
+			return this.ireader.numDocs();
+		}
 	}
 	
 	/**
