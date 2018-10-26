@@ -106,7 +106,7 @@ public class QueryRetrievalModel {
             if (postingList == null) postingList = new int[0][];
             // Show a warning about detecting non-exist term token
             if (postingList.length == 0)
-                System.err.println(String.format("[WARN] Token <%s> not in collection", token));
+                System.out.println(String.format("[WARN] Token <%s> not in collection", token));
             this.collectionPostings.put(token, postingList);
         }
         return this.collectionPostings.get(token);

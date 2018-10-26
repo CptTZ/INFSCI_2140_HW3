@@ -33,17 +33,17 @@ public class HW3Main {
 				Query aQuery = queries.next();
 				System.out.println(aQuery.GetTopicId() + "\t" + aQuery.GetQueryContent());
 				// Retrieve 20 candidate documents on the indexing.
-				List<Document> results = model.retrieveQuery(aQuery, 20);
+				List<Document> results = model.retrieveQuery(aQuery, 3);
 				if (results != null) {
 					int rank = 1;
 					for (Document result : results) {
-						System.out.println(aQuery.GetTopicId() + " Q0 " + result.docno() + " " + rank + " " + result.score() + " MYRUN");
+						System.out.println(aQuery.GetTopicId() + " Q0 " + result.docno() + " " + rank + " " + result.score() + " TESTMU");
 						rank++;
 					}
 				}
 			}
 			long endTime = System.currentTimeMillis(); // end time of running code
-			System.out.println("\n\n4 queries search time: " + (endTime - startTime) / 60000.0 + " min");
+			System.out.println();System.out.println();
 		}
 		ixreader.close();
 	}
